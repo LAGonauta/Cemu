@@ -11,7 +11,10 @@
       "default-features": false
     },
     "rapidjson",
-    "sdl2",
+    {
+      "name": "sdl3",
+      "default-features": false
+    },
     "boost-tokenizer",
     "boost-container",
     "boost-program-options",
@@ -26,8 +29,10 @@
     "boost-static-string",
     "boost-random",
     "boost-dll",
-    "fmt",
-    "hidapi",
+    {
+      "name": "fmt",
+      "version>=": "12.1.0"
+    },
     "libpng",
     "glm",
     {
@@ -37,10 +42,10 @@
     "zstd",
     {
       "name": "wxwidgets",
+      "default-features": false,
       "features": [
         "debug-support"
-      ],
-      "default-features": false
+      ]
     },
     "openssl",
     {
@@ -71,8 +76,8 @@
       "version": "15.1.0"
     },
     {
-      "name": "sdl2",
-      "version": "2.30.3"
+      "name": "sdl3",
+      "version": "3.4.10"
     },
     {
       "name": "wxwidgets",

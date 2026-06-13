@@ -170,7 +170,7 @@ void LatteTexture_UnregisterTextureMemoryOccupancy(LatteTexture* texture)
 }
 
 // calculate the actually accessed data range
-// the resulting range is an estimate and may be smaller than the actual slice size (but not larger) 
+// the resulting range is an estimate and may be smaller than the actual slice size (but not larger)
 void LatteTexture_EstimateMipSliceAccessedDataRange(LatteTexture* texture, sint32 sliceIndex, sint32 mipIndex, LatteTextureSliceMipInfo* sliceMipInfo)
 {
 	uint32 estAddrStart;
@@ -222,7 +222,7 @@ void LatteTexture_InitSliceAndMipInfo(LatteTexture* texture)
 			LatteAddrLib::AddrSurfaceInfo_OUT surfaceInfo;
 			LatteAddrLib::GX2CalculateSurfaceInfo(texture->format, texture->width, texture->height, texture->depth, texture->dim, Latte::MakeGX2TileMode(texture->tileMode), 0, mipIndex, &surfaceInfo);
 			sliceMipInfo->tileMode = surfaceInfo.hwTileMode;
-			
+
 			if (mipIndex == 0)
 				sliceMipInfo->pitch = texture->pitch; // for the base level, use the pitch value configured in hardware
 			else
@@ -567,6 +567,8 @@ bool __LatteTexture_IsBlockedFormatRelation(LatteTexture* texture1, LatteTexture
 		if (texture1->format == Latte::E_GX2SURFFMT::D32_FLOAT && Latte::GetHWFormat(texture2->format) == Latte::E_HWSURFFMT::HWFMT_8_8_8_8)
 			return true;
 	}
+
+#ifdef ENABLE_VULKAN
 	// Vulkan has stricter rules
 	if (g_renderer->GetType() == RendererAPI::Vulkan)
 	{
@@ -574,6 +576,7 @@ bool __LatteTexture_IsBlockedFormatRelation(LatteTexture* texture1, LatteTexture
 		if (texture1->format == Latte::E_GX2SURFFMT::D32_FLOAT && Latte::GetHWFormat(texture2->format) == Latte::E_HWSURFFMT::HWFMT_8_24)
 			return true;
 	}
+#endif
 
 	return false;
 }
@@ -877,7 +880,7 @@ VIEWCOMPATIBILITY LatteTexture_CanTextureBeRepresentedAsView(LatteTexture* baseT
 			// check pitch
 			if(sliceMipInfo->pitch != pitch)
 				continue;
-			// check all slices			
+			// check all slices
 			if(LatteAddrLib::TM_IsThickAndMacroTiled(baseTexture->tileMode))
 				continue; // todo - check only every 4th slice?
 			for (sint32 s=0; s<baseTexture->GetMipDepth(m); s++)
@@ -978,7 +981,7 @@ LatteTextureView* LatteTexture_CreateMapping(MPTR physAddr, MPTR physMipAddr, si
 	}
 	// note: When creating an existing texture, we only allow mip and slice expansion at the end
 	cemu_assert_debug(depth);
-	
+
 	cemu_assert_debug(!(depth > 1 && dimBase == Latte::E_DIM::DIM_2D));
 	cemu_assert_debug(!(numSlice > 1 && dimView == Latte::E_DIM::DIM_2D));
 	// todo, depth and numSlice are redundant
@@ -1138,6 +1141,7 @@ void LatteTC_LookupTexturesByPhysAddr(MPTR physAddr, std::vector<LatteTexture*>&
 	}
 }
 
+// return or create a view, requires existing base texture. Returns nullptr if it doesn't exist yet
 LatteTextureView* LatteTC_GetTextureSliceViewOrTryCreate(MPTR srcImagePtr, MPTR srcMipPtr, Latte::E_GX2SURFFMT srcFormat, Latte::E_HWTILEMODE srcTileMode, uint32 srcWidth, uint32 srcHeight, uint32 srcDepth, uint32 srcPitch, uint32 srcSwizzle, uint32 srcSlice, uint32 srcMip, const bool requireExactResolution)
 {
 	LatteTextureView* sourceView;
@@ -1307,6 +1311,40 @@ LatteTexture::LatteTexture(Latte::E_DIM dim, MPTR physAddress, MPTR physMipAddre
 	if (this->tileMode == Latte::E_HWTILEMODE::TM_LINEAR_ALIGNED)
 	{
 		this->enableReadback = true;
+	}
+
+	// calculate number of potential mip levels (from effective size)
+	sint32 effectiveWidth = width;
+	sint32 effectiveHeight = height;
+	sint32 effectiveDepth = depth;
+	if (this->overwriteInfo.hasResolutionOverwrite)
+	{
+		effectiveWidth = this->overwriteInfo.width;
+		effectiveHeight = this->overwriteInfo.height;
+		effectiveDepth = this->overwriteInfo.depth;
+	}
+	this->maxPossibleMipLevels = 1;
+	if (dim != Latte::E_DIM::DIM_3D)
+	{
+		for (sint32 i = 0; i < 20; i++)
+		{
+			if ((effectiveWidth >> i) <= 1 && (effectiveHeight >> i) <= 1)
+			{
+				this->maxPossibleMipLevels = i + 1;
+				break;
+			}
+		}
+	}
+	else
+	{
+		for (sint32 i = 0; i < 20; i++)
+		{
+			if ((effectiveWidth >> i) <= 1 && (effectiveHeight >> i) <= 1 && (effectiveDepth >> i) <= 1)
+			{
+				this->maxPossibleMipLevels = i + 1;
+				break;
+			}
+		}
 	}
 }
 

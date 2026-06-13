@@ -69,6 +69,7 @@ void gx2Export_GX2SampleBottomGPUCycle(PPCInterpreter_t* hCPU)
 	// Whats a good solution here? Should we implement it correctly and instead rely on graphic pack patches to patch out the dynamic scaling?
 	// some known affected games: Wind Waker HD, Super Mario 3D World
 
+	GX2::GX2ReserveCmdSpace(2);
 	gx2WriteGather_submitU32AsBE(pm4HeaderType3(IT_HLE_SAMPLE_TIMER, 1));
 	gx2WriteGather_submitU32AsBE(hCPU->gpr[3]); 
 	osLib_returnFromFunction(hCPU, 0);
@@ -206,8 +207,12 @@ namespace GX2
 
 	void GX2SetTVGamma(float gamma)
 	{
-		if (abs(gamma - 1.0f) > 0.01f)
-			cemuLog_logDebug(LogType::Force, "TV gamma set to {} which is not supported", gamma);
+		LatteGPUState.tvGamma = (1.0f - gamma);
+	}
+
+	void GX2SetDRCGamma(float gamma)
+	{
+		LatteGPUState.drcGamma = (1.0f - gamma);
 	}
 
 	bool GX2GetLastFrame(uint32 deviceId, GX2Texture* textureOut)
@@ -307,6 +312,7 @@ namespace GX2
 
 		cafeExportRegister("gx2", GX2SetTVBuffer, LogType::GX2);
 		cafeExportRegister("gx2", GX2SetTVGamma, LogType::GX2);
+		cafeExportRegister("gx2", GX2SetDRCGamma, LogType::GX2);
 
 		cafeExportRegister("gx2", GX2GetLastFrame, LogType::GX2);
 		cafeExportRegister("gx2", GX2GetLastFrameGammaA, LogType::GX2);

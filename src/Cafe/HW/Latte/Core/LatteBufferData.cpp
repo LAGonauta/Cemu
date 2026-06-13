@@ -9,7 +9,9 @@
 #include "Cafe/GameProfile/GameProfile.h"
 
 #include "Cafe/HW/Latte/Core/LatteBufferCache.h"
+#ifdef ENABLE_VULKAN
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanRenderer.h"
+#endif
 
 template<int vectorLen>
 void rectGenerate4thVertex(uint32be* output, uint32be* input0, uint32be* input1, uint32be* input2)
@@ -62,7 +64,7 @@ void rectGenerate4thVertex(uint32be* output, uint32be* input0, uint32be* input1,
 
 	// order of rectangle vertices is
 	// v0 v1
-	// v2 v3 
+	// v2 v3
 
 	for (sint32 f = 0; f < vectorLen*4; f++)
 		output[f] = _swapEndianU32(output[f]);
@@ -196,14 +198,17 @@ bool LatteBufferCache_Sync(uint32 minIndex, uint32 maxIndex, uint32 baseInstance
 			fixedBufferSize += 128;
 
 
-#if BOOST_OS_MACOS
+#if BOOST_OS_MACOS && defined(ENABLE_VULKAN)
 		if(bufferStride % 4 != 0)
 		{
-			if (VulkanRenderer* vkRenderer = VulkanRenderer::GetInstance())
+		    if (g_renderer->GetType() == RendererAPI::Vulkan)
 			{
-				auto fixedBuffer = vkRenderer->buffer_genStrideWorkaroundVertexBuffer(bufferAddress, fixedBufferSize, bufferStride);
-				vkRenderer->buffer_bindVertexStrideWorkaroundBuffer(fixedBuffer.first, fixedBuffer.second, bufferIndex, fixedBufferSize);
-				continue;
+    			if (VulkanRenderer* vkRenderer = VulkanRenderer::GetInstance())
+    			{
+    				auto fixedBuffer = vkRenderer->buffer_genStrideWorkaroundVertexBuffer(bufferAddress, fixedBufferSize, bufferStride);
+    				vkRenderer->buffer_bindVertexStrideWorkaroundBuffer(fixedBuffer.first, fixedBuffer.second, bufferIndex, fixedBufferSize);
+    				continue;
+    			}
 			}
 		}
 #endif

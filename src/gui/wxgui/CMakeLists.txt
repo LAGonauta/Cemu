@@ -1,9 +1,5 @@
-add_library(CemuWxGui 
+add_library(CemuWxGui STATIC
   canvas/IRenderCanvas.h
-  canvas/OpenGLCanvas.cpp
-  canvas/OpenGLCanvas.h
-  canvas/VulkanCanvas.cpp
-  canvas/VulkanCanvas.h
   CemuApp.cpp
   CemuApp.h
   CemuUpdateWindow.cpp
@@ -50,6 +46,8 @@ add_library(CemuWxGui
   AudioDebuggerWindow.h
   DownloadGraphicPacksWindow.cpp
   DownloadGraphicPacksWindow.h
+  DownloadCustomGraphicPackWindow.cpp
+  DownloadCustomGraphicPackWindow.h
   GameProfileWindow.cpp
   GameProfileWindow.h
   GameUpdateWindow.cpp
@@ -76,8 +74,6 @@ add_library(CemuWxGui
   input/InputAPIAddWindow.h
   input/InputSettings2.cpp
   input/InputSettings2.h
-  input/PairingDialog.cpp
-  input/PairingDialog.h
   input/panels/ClassicControllerInputPanel.cpp
   input/panels/ClassicControllerInputPanel.h
   input/panels/InputPanel.cpp
@@ -118,7 +114,37 @@ add_library(CemuWxGui
   wxHelper.h
 )
 
+if (ENABLE_OPENGL)
+  target_sources(CemuWxGui PRIVATE
+    canvas/OpenGLCanvas.cpp
+    canvas/OpenGLCanvas.h
+  )
+endif()
+
+if (ENABLE_VULKAN)
+  target_sources(CemuWxGui PRIVATE
+    canvas/VulkanCanvas.cpp
+    canvas/VulkanCanvas.h
+  )
+endif()
+
+if (ENABLE_METAL)
+  target_sources(CemuWxGui PRIVATE
+    canvas/MetalCanvas.cpp
+    canvas/MetalCanvas.h
+  )
+endif()
+
+if (ENABLE_BLUEZ)
+  target_sources(CemuWxGui PRIVATE
+    input/PairingDialog.cpp
+    input/PairingDialog.h
+  )
+endif()
+
 set_property(TARGET CemuWxGui PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+cemu_use_precompiled_header(CemuWxGui)
 
 
 target_include_directories(CemuWxGui PUBLIC "../")
@@ -126,20 +152,15 @@ target_include_directories(CemuWxGui PUBLIC "../")
 target_include_directories(CemuWxGui PUBLIC ${RAPIDJSON_INCLUDE_DIRS})
 
 target_link_libraries(CemuWxGui PRIVATE
-	CemuAudio
-	CemuCafe
-	CemuCommon
-	CemuComponents
-	CemuConfig
-	CemuInput
-	CemuResource
-	CemuUtil
-	Boost::headers
-	CURL::libcurl
-	libzip::zip
-	OpenSSL::Crypto
-	pugixml::pugixml
-	ZArchive::zarchive
+  CemuCommon
+  CemuResource
+  libzip::zip
+  ZArchive::zarchive
+  CemuComponents
+  pugixml::pugixml
+  CemuCafe
+  PUBLIC
+  CURL::libcurl
 )
 
 if(ENABLE_WXWIDGETS AND UNIX AND NOT APPLE)
@@ -154,6 +175,10 @@ if(ENABLE_CUBEB)
 	target_link_libraries(CemuWxGui PRIVATE cubeb::cubeb)
 endif()
 
+if(ENABLE_SDL)
+	target_link_libraries(CemuWxGui PRIVATE SDL3::SDL3)
+endif()
+
 if(UNIX AND NOT APPLE)
 	if(ENABLE_FERAL_GAMEMODE)
 		target_link_libraries(CemuWxGui PRIVATE gamemode)
@@ -161,7 +186,7 @@ if(UNIX AND NOT APPLE)
 endif()
 if (ENABLE_WXWIDGETS)
 	# PUBLIC because wx/app.h is included in CemuApp.h
-	target_link_libraries(CemuWxGui PUBLIC wx::base wx::core wx::gl wx::propgrid wx::xrc)
+	target_link_libraries(CemuWxGui PUBLIC wxWidgets::wxWidgets)
 endif()
 
 if(WIN32)

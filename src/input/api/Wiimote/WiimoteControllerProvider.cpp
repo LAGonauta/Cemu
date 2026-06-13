@@ -25,9 +25,31 @@ WiimoteControllerProvider::~WiimoteControllerProvider()
 	if (m_running)
 	{
 		m_running = false;
-		m_writer_thread.join();
-		m_reader_thread.join();
-		m_connectionThread.join();
+
+		{
+			std::scoped_lock lock(m_writer_mutex); 
+			m_writer_cond.notify_all();
+		}
+
+		{
+			std::scoped_lock lock(m_connectionMutex);
+			m_connectionCond.notify_all();
+		}
+
+		if (m_writer_thread.joinable())
+		{
+			m_writer_thread.join();
+		}
+
+		if (m_reader_thread.joinable())
+		{
+			m_reader_thread.join();
+		}
+
+		if (m_connectionThread.joinable())
+		{
+			m_connectionThread.join();
+		}
 	}
 }
 
@@ -169,7 +191,8 @@ void WiimoteControllerProvider::connectionThread()
 			m_connectedDevices.clear();
 			std::ranges::move(devices, std::back_inserter(m_connectedDevices));
 		}
-		std::this_thread::sleep_for(std::chrono::seconds(2));
+		std::unique_lock<std::mutex> lock(m_connectionMutex);
+		m_connectionCond.wait_for(lock, std::chrono::seconds(2));
 	}
 }
 
@@ -343,6 +366,9 @@ void WiimoteControllerProvider::reader_thread()
                             cemuLog_logDebug(LogType::Force,"Extension only partially inserted");
 							new_state.m_extension = {};
 							request_status(index);
+							break;
+						case kExtensionMotionPlusInactive:
+                            cemuLog_logDebug(LogType::Force,"Extension Type Received: Inactive MotionPlus");
 							break;
 						default:
                             cemuLog_logDebug(LogType::Force,"Unknown extension: {:#x}", be_type.value());

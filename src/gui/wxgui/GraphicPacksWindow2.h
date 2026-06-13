@@ -1,9 +1,9 @@
 #pragma once
 
-#include <wx/frame.h>
 #include <wx/dialog.h>
 #include <wx/scrolwin.h>
 #include <wx/infobar.h>
+#include <wx/hyperlink.h>
 
 #include "wxcomponents/checktree.h"
 
@@ -46,6 +46,7 @@ private:
 	wxBoxSizer* m_preset_sizer;
 	std::vector<wxChoice*> m_active_preset;
 	wxButton* m_reload_shaders;
+	wxHyperlinkCtrl* m_download_from_url;
 	wxButton* m_update_graphicPacks;
 	wxInfoBar* m_info_bar;
 
@@ -53,6 +54,9 @@ private:
 	std::string m_gp_name, m_gp_description;
 
 	float m_ratio = 0.55f;
+	wxColour m_default_colour = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT);
+	wxColour m_activated_colour = wxSystemSettings::SelectLightDark(wxColour(0x00, 0xCC, 0x00), wxColour(0x42, 0xB3, 0x42));
+	wxColour m_incompatible_colour = wxSystemSettings::SelectLightDark(wxColour(0xCC, 0x00, 0x00), wxColour(0xDE, 0x49, 0x49));
 
 	wxTreeItemId FindTreeItem(const wxTreeItemId& root, const wxString& text) const;
 	void LoadPresetSelections(const GraphicPackPtr& gp);
@@ -61,6 +65,7 @@ private:
 	void OnTreeChoiceChanged(wxTreeEvent& event);
 	void OnActivePresetChanged(wxCommandEvent& event);
 	void OnReloadShaders(wxCommandEvent& event);
+	void OnClickCustomDownload(wxCommandEvent& event);
 	void OnCheckForUpdates(wxCommandEvent& event);
 	void OnSizeChanged(wxSizeEvent& event);
 	void SashPositionChanged(wxEvent& event);

@@ -87,14 +87,14 @@ LatteTextureVk::LatteTextureVk(class VulkanRenderer* vkRenderer, Latte::E_DIM di
 	if (vkCreateImage(m_vkr->GetLogicalDevice(), &imageInfo, nullptr, &vkObjTex->m_image) != VK_SUCCESS)
 		m_vkr->UnrecoverableError("Failed to create texture image");
 	
-	if (m_vkr->IsDebugUtilsEnabled() && vkSetDebugUtilsObjectNameEXT)
+	if (m_vkr->IsDebugMarkersEnabled())
 	{
 		VkDebugUtilsObjectNameInfoEXT objName{};
 		objName.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
 		objName.objectType = VK_OBJECT_TYPE_IMAGE;
 		objName.pNext = nullptr;
 		objName.objectHandle = (uint64_t)vkObjTex->m_image;
-		auto objNameStr = fmt::format("tex_{:08x}_fmt{:04x}", physAddress, (uint32)format);
+		auto objNameStr = fmt::format("tex_{:08x}_fmt{:04x}_tm{:x}", physAddress, (uint32)format, (uint32)tileMode);
 		objName.pObjectName = objNameStr.c_str();
 		vkSetDebugUtilsObjectNameEXT(m_vkr->GetLogicalDevice(), &objName);
 	}

@@ -1,6 +1,4 @@
 #pragma once
-
-#include <utility>
 #include "config/CemuConfig.h"
 #include "config/NetworkSettings.h"
 
@@ -95,6 +93,10 @@ public:
 	[[nodiscard]] static bool RenderUpsideDownEnabled();
 	[[nodiscard]] static bool WaitForGX2DrawDoneEnabled();
 	[[nodiscard]] static GraphicAPI GetGraphicsAPI();
+
+	// gamma
+	[[nodiscard]] static float GetTVGamma();
+	[[nodiscard]] static float GetDRCGamma();
 
 	// audio
 	[[nodiscard]] static bool AudioOutputOnlyAux();

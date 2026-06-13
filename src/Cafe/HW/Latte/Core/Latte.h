@@ -27,11 +27,6 @@ struct LatteGPUState_t
 	uint32 contextControl1;
 	// optional features
 	bool allowFramebufferSizeOptimization{false}; // allow using scissor box as size hint to determine non-padded rendertarget size
-	// draw context
-	struct  
-	{
-		uint32 numInstances;
-	}drawContext;
 	// stats
 	uint32 frameCounter;
 	uint32 flipCounter; // increased by one everytime a vsync + flip happens
@@ -54,6 +49,8 @@ struct LatteGPUState_t
 	// temporary (replace with proper solution later)
 	bool tvBufferUsesSRGB;
 	bool drcBufferUsesSRGB;
+	float tvGamma = 0.0f;
+	float drcGamma = 0.0f;
 	// draw state
 	bool activeShaderHasError; // if try, at least one currently bound shader stage has an error and cannot be used for drawing
 	bool repeatTextureInitialization; // if set during rendertarget or texture initialization, repeat the process (textures likely have been invalidated)
@@ -101,10 +98,6 @@ void LatteRenderTarget_itHLECopyColorBufferToScanBuffer(MPTR colorBufferPtr, uin
 
 void LatteRenderTarget_unloadAll();
 
-// surface copy
-
-void LatteSurfaceCopy_copySurfaceNew(MPTR srcPhysAddr, MPTR srcMipAddr, uint32 srcSwizzle, Latte::E_GX2SURFFMT srcSurfaceFormat, sint32 srcWidth, sint32 srcHeight, sint32 srcDepth, uint32 srcPitch, sint32 srcSlice, Latte::E_DIM srcDim, Latte::E_HWTILEMODE srcTilemode, sint32 srcAA, sint32 srcLevel, MPTR dstPhysAddr, MPTR dstMipAddr, uint32 dstSwizzle, Latte::E_GX2SURFFMT dstSurfaceFormat, sint32 dstWidth, sint32 dstHeight, sint32 dstDepth, uint32 dstPitch, sint32 dstSlice, Latte::E_DIM dstDim, Latte::E_HWTILEMODE dstTilemode, sint32 dstAA, sint32 dstLevel);
-
 // texture cache
 
 void LatteTC_Init();
@@ -132,6 +125,7 @@ void LatteTextureReadback_StartTransfer(LatteTextureView* textureView);
 bool LatteTextureReadback_Update(bool forceStart = false);
 void LatteTextureReadback_NotifyTextureDeletion(LatteTexture* texture);
 void LatteTextureReadback_UpdateFinishedTransfers(bool forceFinish);
+bool LatteTextureReadback_ReadbackToLinearBlocking(LatteTextureView* sourceView, uint8* dstPtr, uint32 dstWidth, uint32 dstHeight, uint32 dstPitch);
 
 // query
 

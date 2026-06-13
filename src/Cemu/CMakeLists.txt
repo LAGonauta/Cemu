@@ -8,6 +8,7 @@ add_library(CemuComponents
   Logging/CemuLogging.h
   napi/napi_act.cpp
   napi/napi_ec.cpp
+  napi/napi.cpp
   napi/napi.h
   napi/napi_helper.cpp
   napi/napi_helper.h
@@ -40,20 +41,13 @@ endif()
 
 set_property(TARGET CemuComponents PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+cemu_use_precompiled_header(CemuComponents)
+
 target_include_directories(CemuComponents PUBLIC "../")
 
 target_link_libraries(CemuComponents PRIVATE
-	CemuCafe
 	CemuCommon
-	CemuConfig
-	CemuGui
-	CemuUtil
-	Boost::headers
-	CURL::libcurl
-	OpenSSL::Crypto
-	OpenSSL::SSL
-	pugixml::pugixml
-	ZLIB::ZLIB
+  CemuGui
 )
 
 # PUBLIC because fmt/format.h is included in ExpressionParser/ExpressionParser.h

@@ -33,10 +33,10 @@
 #include "Cafe/IOSU/legacy/iosu_crypto.h"
 #include "Cafe/IOSU/legacy/iosu_mcp.h"
 #include "Cafe/IOSU/legacy/iosu_acp.h"
-#include "Cafe/IOSU/legacy/iosu_boss.h"
 #include "Cafe/IOSU/legacy/iosu_nim.h"
 #include "Cafe/IOSU/PDM/iosu_pdm.h"
 #include "Cafe/IOSU/ccr_nfc/iosu_ccr_nfc.h"
+#include "Cafe/IOSU/nn/boss/boss_service.h"
 
 // IOSU initializer functions
 #include "Cafe/IOSU/kernel/iosu_kernel.h"
@@ -165,7 +165,7 @@ void LoadMainExecutable()
 	else
 	{
 		// RPX
-		RPLLoader_AddDependency(_pathToExecutable.c_str());
+		RPLLoader_AddDependency(_pathToExecutable.c_str(), true);
 		applicationRPX = RPLLoader_LoadFromMemory(rpxData, rpxSize, (char*)_pathToExecutable.c_str());
 		if (!applicationRPX)
 		{
@@ -201,7 +201,6 @@ fs::path getTitleSavePath()
 
 void InfoLog_TitleLoaded()
 {
-	cemuLog_createLogFile(false);
 	uint64 titleId = CafeSystem::GetForegroundTitleId();
 	cemuLog_log(LogType::Force, "------- Loaded title -------");
 	cemuLog_log(LogType::Force, "TitleId: {:08x}-{:08x}", (uint32)(titleId >> 32), (uint32)(titleId & 0xFFFFFFFF));
@@ -249,9 +248,21 @@ void InfoLog_PrintActiveSettings()
 	if (ActiveSettings::GetGraphicsAPI() == GraphicAPI::kVulkan)
 	{
 		cemuLog_log(LogType::Force, "Async compile: {}", GetConfig().async_compile.GetValue() ? "true" : "false");
-		if(!GetConfig().vk_accurate_barriers.GetValue())
+		if (!GetConfig().vk_accurate_barriers.GetValue())
 			cemuLog_log(LogType::Force, "Accurate barriers are disabled!");
 	}
+#ifdef ENABLE_METAL
+	else if (ActiveSettings::GetGraphicsAPI() == GraphicAPI::kMetal)
+	{
+	    cemuLog_log(LogType::Force, "Async compile: {}", GetConfig().async_compile.GetValue() ? "true" : "false");
+	    cemuLog_log(LogType::Force, "Force mesh shaders: {}", GetConfig().force_mesh_shaders.GetValue() ? "true" : "false");
+		cemuLog_log(LogType::Force, "Fast math: {}", g_current_game_profile->GetShaderFastMath() ? "true" : "false");
+		cemuLog_log(LogType::Force, "Buffer cache type: {}", g_current_game_profile->GetBufferCacheMode());
+		cemuLog_log(LogType::Force, "Position invariance: {}", g_current_game_profile->GetPositionInvariance());
+		if (!GetConfig().vk_accurate_barriers.GetValue())
+			cemuLog_log(LogType::Force, "Accurate barriers are disabled!");
+	}
+#endif
 	cemuLog_log(LogType::Force, "Console language: {}", stdx::to_underlying(config.console_language.GetValue()));
 }
 
@@ -355,10 +366,9 @@ uint32 LoadSharedData()
 void cemu_initForGame()
 {
 	WindowSystem::UpdateWindowTitles(false, true, 0.0);
+	cemuLog_createLogFile(false);
 	// input manager apply game profile
 	InputManager::instance().apply_game_profile();
-	// log info for launched title
-	InfoLog_TitleLoaded();
 	// determine cycle offset since 1.1.2000
 	uint64 secondsSince2000_UTC = (uint64)(time(NULL) - 946684800);
 	ppcCyclesSince2000_UTC = secondsSince2000_UTC * (uint64)ESPRESSO_CORE_CLOCK;
@@ -374,8 +384,11 @@ void cemu_initForGame()
 	ppcCyclesSince2000 = theTime * (uint64)ESPRESSO_CORE_CLOCK;
 	ppcCyclesSince2000TimerClock = ppcCyclesSince2000 / 20ULL;
 	PPCTimer_start();
-	// this must happen after the RPX/RPL files are mapped to memory (coreinit sets up heaps so that they don't overwrite RPX/RPL data)
-	osLib_load();
+	// coreinit is bootstrapped first and then the main game executable is loaded
+	RPLLoader_LoadCoreinit();
+	LoadMainExecutable();
+	// log info for launched title
+	InfoLog_TitleLoaded();
 	// link all modules
 	uint32 linkTimeStart = GetTickCount();
 	RPLLoader_UpdateDependencies();
@@ -414,10 +427,8 @@ void cemu_initForGame()
 	cemuLog_log(LogType::Force, "------- Run title -------");
 	// wait till GPU thread is initialized
 	while (g_isGPUInitFinished == false) std::this_thread::sleep_for(std::chrono::milliseconds(50));
-	// init initial thread
-	OSThread_t* initialThread = coreinit::OSGetDefaultThread(1);
-	coreinit::OSSetThreadPriority(initialThread, 16);
-	coreinit::OSRunThread(initialThread, PPCInterpreter_makeCallableExportDepr(coreinit_start), 0, nullptr);
+	// run coreinit rpl_entry
+	RPLLoader_CallCoreinitEntrypoint();
 	// init AX and start AX I/O thread
 	snd_core::AXOut_init();
 }
@@ -488,21 +499,43 @@ namespace CafeSystem
 	std::string GetWindowsNamedVersion(uint32& buildNumber)
 	{
 		char productName[256];
+		char buildNumberStr[32];
+		char featureVersion[32];
 		HKEY hKey;
 		DWORD dwType = REG_SZ;
 		DWORD dwSize = sizeof(productName);
+		buildNumber = 0;
+		featureVersion[0] = '\0';
 		if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0, KEY_QUERY_VALUE, &hKey) == ERROR_SUCCESS)
 		{
 			if (RegQueryValueExA(hKey, "ProductName", NULL, &dwType, (LPBYTE)productName, &dwSize) != ERROR_SUCCESS)
 				strcpy(productName, "Windows");
+			dwType = REG_SZ;
+			dwSize = sizeof(buildNumberStr);
+			if (RegQueryValueExA(hKey, "CurrentBuildNumber", NULL, &dwType, (LPBYTE)buildNumberStr, &dwSize) == ERROR_SUCCESS)
+				buildNumber = (uint32)atoi(buildNumberStr);
+			dwType = REG_SZ;
+			dwSize = sizeof(featureVersion);
+			if (RegQueryValueExA(hKey, "DisplayVersion", NULL, &dwType, (LPBYTE)featureVersion, &dwSize) != ERROR_SUCCESS)
+			{
+				dwType = REG_SZ;
+				dwSize = sizeof(featureVersion);
+				if (RegQueryValueExA(hKey, "ReleaseId", NULL, &dwType, (LPBYTE)featureVersion, &dwSize) != ERROR_SUCCESS)
+					featureVersion[0] = '\0';
+			}
 			RegCloseKey(hKey);
 		}
-		OSVERSIONINFO osvi;
-		ZeroMemory(&osvi, sizeof(OSVERSIONINFO));
-		osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
-		GetVersionEx(&osvi);
-		buildNumber = osvi.dwBuildNumber;
-		return std::string(productName);
+		std::string result(productName);
+		// ProductName still reads as "Windows 10" on Windows 11. Find and replace with "Windows 11" based on build number.
+		if (buildNumber >= 22000)
+		{
+			size_t pos = result.find("Windows 10");
+			if (pos != std::string::npos)
+				result.replace(pos, 10, "Windows 11");
+		}
+		if (featureVersion[0] != '\0')
+			result += fmt::format(" {}", featureVersion);
+		return result;
 	}
 	#endif
 
@@ -528,7 +561,23 @@ namespace CafeSystem
 		else
 			platform = "Linux";
 		#elif BOOST_OS_MACOS
-		platform = "MacOS";
+		char productVersion[256]{};
+		size_t productVersionSize = sizeof(productVersion);
+		const int productVersionResult = sysctlbyname("kern.osproductversion", productVersion, &productVersionSize, nullptr, 0);
+
+		char buildVersion[256]{};
+		size_t buildVersionSize = sizeof(buildVersion);
+		const int buildVersionResult = sysctlbyname("kern.osversion", buildVersion, &buildVersionSize, nullptr, 0);
+
+		if (productVersionResult == 0 && buildVersionResult == 0)
+			buffer = fmt::format("macOS {} ({})", productVersion, buildVersion);
+		else if (productVersionResult == 0)
+			buffer = fmt::format("macOS {}", productVersion);
+		else
+			buffer = "macOS";
+
+		platform = buffer.c_str();
+		
 		#elif BOOST_OS_BSD
 		#if defined(__FreeBSD__)
 		platform = "FreeBSD";
@@ -551,6 +600,7 @@ namespace CafeSystem
 		iosu::fpd::GetModule(),
 		iosu::pdm::GetModule(),
 		iosu::ccr_nfc::GetModule(),
+		iosu::boss::GetModule()
 	};
 
 	// initialize all subsystems which are persistent and don't depend on a game running
@@ -589,24 +639,8 @@ namespace CafeSystem
 		iosu::iosuMcp_init();
 		iosu::mcp::Init();
 		iosu::iosuAcp_init();
-		iosu::boss_init();
 		iosu::nim::Initialize();
 		iosu::odm::Initialize();
-		// init Cafe OS
-		avm::Initialize();
-		drmapp::Initialize();
-		TCL::Initialize();
-		nn::cmpt::Initialize();
-		nn::ccr::Initialize();
-		nn::temp::Initialize();
-		nn::aoc::Initialize();
-		nn::pdm::Initialize();
-		snd::user::Initialize();
-		H264::Initialize();
-		snd_core::Initialize();
-		mic::Initialize();
-		nfc::Initialize();
-		ntag::Initialize();
 		// init hardware register interfaces
 		HW_SI::Initialize();
 	}
@@ -737,7 +771,7 @@ namespace CafeSystem
         }
     }
 
-	PREPARE_STATUS_CODE SetupExecutable()
+	PREPARE_STATUS_CODE PrepareExecutable()
 	{
 		// set rpx path from cos.xml if available
 		_pathToBaseExecutable = _pathToExecutable;
@@ -768,7 +802,6 @@ namespace CafeSystem
 				}
 			}
 		}
-		LoadMainExecutable();
 		return PREPARE_STATUS_CODE::SUCCESS;
 	}
 
@@ -801,7 +834,7 @@ namespace CafeSystem
 		// setup memory space and PPC recompiler
         SetupMemorySpace();
         PPCRecompiler_init();
-		r = SetupExecutable(); // load RPX
+		r = PrepareExecutable(); // load RPX
 		if (r != PREPARE_STATUS_CODE::SUCCESS)
 			return r;
 		InitVirtualMlcStorage();
@@ -846,7 +879,7 @@ namespace CafeSystem
         SetupMemorySpace();
         PPCRecompiler_init();
         // load executable
-        SetupExecutable();
+        PrepareExecutable();
 		InitVirtualMlcStorage();
 		return PREPARE_STATUS_CODE::SUCCESS;
 	}
@@ -939,19 +972,30 @@ namespace CafeSystem
 	{
 		if (sLaunchModeIsStandalone)
 			return CosCapabilityBits::All;
+
+		CosCapabilityBits resultMask = static_cast<CosCapabilityBits>(0);
+		for (const auto& pack : GraphicPack2::GetActiveGraphicPacks())
+		{
+			for (const auto& permissionOverrides : pack->GetPermissionOverrides()) 
+			{
+				if (permissionOverrides.first == group)
+					resultMask |= static_cast<CosCapabilityBits>(permissionOverrides.second);
+			}
+		}
+
 		auto& update = sGameInfo_ForegroundTitle.GetUpdate();
 		if (update.IsValid())
 		{
 			ParsedCosXml* cosXml = update.GetCosInfo();
 			if (cosXml)
-				return cosXml->GetCapabilityBits(group);
+				return cosXml->GetCapabilityBits(group) | resultMask;
 		}
 		auto& base = sGameInfo_ForegroundTitle.GetBase();
 		if(base.IsValid())
 		{
 			ParsedCosXml* cosXml = base.GetCosInfo();
 			if (cosXml)
-				return cosXml->GetCapabilityBits(group);
+				return cosXml->GetCapabilityBits(group) | resultMask;
 		}
 		return CosCapabilityBits::All;
 	}
@@ -1008,7 +1052,7 @@ namespace CafeSystem
         GX2::_GX2DriverReset();
         nn::save::ResetToDefaultState();
         coreinit::__OSDeleteAllActivePPCThreads();
-        RPLLoader_ResetState();
+        RPLLoader_UnloadAll();
 		for(auto it = s_iosuModules.rbegin(); it != s_iosuModules.rend(); ++it)
 			(*it)->TitleStop();
         // reset Cemu subsystems
@@ -1027,7 +1071,7 @@ namespace CafeSystem
 	{
 		// starting with Cemu 1.27.0 /vol/storage_mlc01/ is virtualized, meaning that it doesn't point to one singular host os folder anymore
 		// instead it now uses a more complex solution to source titles with various formats (folder, wud, wua) from the game paths and host mlc path
-		
+
 		// todo - mount /vol/storage_mlc01/ with base priority to the host mlc?
 
 		// since mounting titles is an expensive operation we have to avoid mounting all titles at once

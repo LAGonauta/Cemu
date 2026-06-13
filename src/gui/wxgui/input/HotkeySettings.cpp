@@ -6,6 +6,7 @@
 #include "HotkeySettings.h"
 #include "MainWindow.h"
 
+#include <wx/app.h>
 #include <wx/clipbrd.h>
 
 #if BOOST_OS_WINDOWS
@@ -89,11 +90,11 @@ std::optional<std::string> SaveScreenshot(std::vector<uint8> data, int width, in
 		if (SaveScreenshotToClipboard(image))
 		{
 			if (!save_screenshot)
-				return "Screenshot saved to clipboard";
+				return _tr("Screenshot saved to clipboard");
 		}
 		else
 		{
-			return "Failed to open clipboard";
+			return _tr("Failed to open clipboard");
 		}
 	}
 	if (save_screenshot)
@@ -102,11 +103,11 @@ std::optional<std::string> SaveScreenshot(std::vector<uint8> data, int width, in
 		if (imagePath.has_value() && SaveScreenshotToFile(imagePath.value(), image))
 		{
 			if (mainWindow)
-				return "Screenshot saved";
+				return _tr("Screenshot saved");
 		}
 		else
 		{
-			return "Failed to save screenshot to file";
+			return _tr("Failed to save screenshot to file");
 		}
 	}
 	return std::nullopt;
@@ -140,7 +141,7 @@ HotkeySettings::HotkeySettings(wxWindow* parent)
 	m_sizer->AddGrowableCol(1);
 	m_sizer->AddGrowableCol(2);
 
-	m_panel = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_SIMPLE);
+	m_panel = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_THEME);
 	m_panel->SetSizer(m_sizer);
 
 	Center();
@@ -150,13 +151,17 @@ HotkeySettings::HotkeySettings(wxWindow* parent)
 	CreateColumnHeaders();
 
 	/* global modifier */
-	CreateHotkeyRow("Hotkey modifier", s_cfgHotkeys.modifiers);
+	CreateHotkeyRow(_tr("Hotkey modifier"), s_cfgHotkeys.modifiers);
 	m_hotkeys.at(0).keyInput->Hide();
 
 	/* hotkeys */
-	CreateHotkeyRow("Toggle fullscreen", s_cfgHotkeys.toggleFullscreen);
-	CreateHotkeyRow("Take screenshot", s_cfgHotkeys.takeScreenshot);
-	CreateHotkeyRow("Toggle fast-forward", s_cfgHotkeys.toggleFastForward);
+	CreateHotkeyRow(_tr("Toggle fullscreen"), s_cfgHotkeys.toggleFullscreen);
+	CreateHotkeyRow(_tr("Take screenshot"), s_cfgHotkeys.takeScreenshot);
+	CreateHotkeyRow(_tr("Toggle fast-forward"), s_cfgHotkeys.toggleFastForward);
+#ifdef CEMU_DEBUG_ASSERT
+	CreateHotkeyRow(_tr("End emulation"), s_cfgHotkeys.endEmulation);
+#endif
+	CreateHotkeyRow(_tr("Exit application"), s_cfgHotkeys.exitApplication);
 
 	m_controllerTimer = new wxTimer(this);
 	Bind(wxEVT_TIMER, &HotkeySettings::OnControllerTimer, this);
@@ -192,6 +197,18 @@ void HotkeySettings::Init(MainWindow* mainWindowFrame)
 		{&s_cfgHotkeys.toggleFastForward, [](void) {
 			 ActiveSettings::SetTimerShiftFactor((ActiveSettings::GetTimerShiftFactor() < 3) ? 3 : 1);
 		 }},
+		{&s_cfgHotkeys.exitApplication, [](void) {
+			auto closeEvent = new wxCloseEvent{wxEVT_CLOSE_WINDOW, s_mainWindow->GetId()};
+			closeEvent->SetCanVeto(false);
+			wxQueueEvent(s_mainWindow, closeEvent);
+		 }},
+#ifdef CEMU_DEBUG_ASSERT
+		{&s_cfgHotkeys.endEmulation, [](void) {
+			 wxTheApp->CallAfter([]() {
+				s_mainWindow->EndEmulation();
+			 });
+		 }},
+#endif
 	});
 
 	s_keyboardHotkeyToFuncMap.reserve(s_cfgHotkeyToFuncMap.size());
@@ -214,13 +231,15 @@ void HotkeySettings::Init(MainWindow* mainWindowFrame)
 void HotkeySettings::CreateColumnHeaders(void)
 {
 	auto* emptySpace = new wxStaticText(m_panel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
-	auto* keyboard = new wxStaticText(m_panel, wxID_ANY, "Keyboard", wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
-	auto* controller = new wxStaticText(m_panel, wxID_ANY, "Controller", wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
+	auto* keyboard = new wxStaticText(m_panel, wxID_ANY, _tr("Keyboard"), wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
+	auto* controller = new wxStaticText(m_panel, wxID_ANY, _tr("Controller"), wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
+	keyboard->SetFont(keyboard->GetFont().Bold().Larger());
+	controller->SetFont(controller->GetFont().Bold().Larger());
 
 	keyboard->SetMinSize(m_minButtonSize);
 	controller->SetMinSize(m_minButtonSize);
 
-	auto flags = wxSizerFlags().Expand();
+	auto flags = wxSizerFlags().Expand().Border(wxTOP, 10);
 	m_sizer->Add(emptySpace, flags);
 	m_sizer->Add(keyboard, flags);
 	m_sizer->Add(controller, flags);
@@ -237,8 +256,8 @@ void HotkeySettings::CreateHotkeyRow(const wxString& label, sHotkeyCfg& cfgHotke
 	controllerInput->Bind(wxEVT_BUTTON, &HotkeySettings::OnControllerHotkeyInputLeftClick, this);
 
 	/* for cancelling and clearing input */
-	keyInput->Connect(wxEVT_RIGHT_UP, wxMouseEventHandler(HotkeySettings::OnKeyboardHotkeyInputRightClick), NULL, this);
-	controllerInput->Connect(wxEVT_RIGHT_UP, wxMouseEventHandler(HotkeySettings::OnControllerHotkeyInputRightClick), NULL, this);
+	keyInput->Bind(wxEVT_RIGHT_UP, &HotkeySettings::OnKeyboardHotkeyInputRightClick, this);
+	controllerInput->Bind(wxEVT_RIGHT_UP, &HotkeySettings::OnControllerHotkeyInputRightClick, this);
 
 	keyInput->SetMinSize(m_minButtonSize);
 	controllerInput->SetMinSize(m_minButtonSize);

@@ -7,12 +7,10 @@ fs::path findPathCI(const fs::path& path)
 
 	fs::path fName = path.filename();
 	fs::path parentPath = path.parent_path();
-	if (!fs::exists(parentPath))
-	{
-		auto CIParent = findPathCI(parentPath);
-		if (fs::exists(CIParent))
-			return findPathCI(CIParent / fName);
-	}
+	if (parentPath.empty())
+		parentPath = ".";
+	else if (!fs::exists(parentPath))
+		parentPath = findPathCI(parentPath);
 
 	std::error_code listErr;
 	for (auto&& dirEntry : fs::directory_iterator(parentPath, listErr))
@@ -114,6 +112,11 @@ void FileStream::extract(std::vector<uint8>& data)
 	SetPosition(0);
 	data.resize(fileSize);
 	readData(data.data(), fileSize);
+}
+
+void FileStream::Flush()
+{
+    m_fileStream.flush();
 }
 
 uint32 FileStream::readData(void* data, uint32 length)
