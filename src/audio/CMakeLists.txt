@@ -44,6 +44,7 @@ target_include_directories(CemuAudio PUBLIC "../")
 target_link_libraries(CemuAudio PRIVATE
 	CemuCommon
 	CemuGui
+	Boost::filesystem
 )
 
 if(ENABLE_CUBEB)

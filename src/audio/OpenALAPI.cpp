@@ -1,5 +1,6 @@
 #include <sstream>
 
+#include <boost/asio.hpp>
 #include <boost/thread.hpp>
 
 #include "AL/alc.h"
